@@ -1,0 +1,478 @@
+:root {
+    --accent: #60a5fa;
+    --accent-strong: #3b82f6;
+    --accent-soft: rgba(96, 165, 250, 0.14);
+    --accent-border: rgba(96, 165, 250, 0.28);
+    --bg: rgba(8, 15, 28, 0.84);
+    --panel: rgba(10, 18, 34, 0.95);
+    --panel-strong: rgba(13, 24, 42, 0.99);
+    --border: rgba(148, 163, 184, 0.2);
+    --text: #cbd5e1;
+    --text-strong: #f8fafc;
+    --muted: #94a3b8;
+    --success: #34d399;
+    --warning: #fbbf24;
+    --shadow: 0 24px 70px -24px rgba(2, 8, 23, 0.75);
+}
+
+.app-container {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 42px 20px 72px;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.app-container::before,
+.app-container::after {
+    content: "";
+    position: absolute;
+    inset: auto;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.app-container::before {
+    width: 320px;
+    height: 320px;
+    top: -80px;
+    left: -80px;
+    background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+}
+
+.app-container::after {
+    width: 380px;
+    height: 380px;
+    bottom: -120px;
+    right: -80px;
+    background: radial-gradient(circle, #2563eb 0%, transparent 72%);
+}
+
+.app-container > * {
+    position: relative;
+    z-index: 1;
+}
+
+.page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    max-width: 760px;
+    text-align: center;
+}
+
+.page-header .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--accent-border);
+    background: rgba(15, 23, 42, 0.65);
+    color: var(--text-strong);
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.page-header .badge span {
+    display: inline-flex;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--success);
+    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.16);
+}
+
+.agent-avatar-wrap {
+    position: relative;
+    width: 112px;
+    height: 112px;
+    margin-bottom: 4px;
+    display: grid;
+    place-items: center;
+}
+
+.agent-avatar-wrap::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    animation: avatar-pulse 2.2s ease-out infinite;
+}
+
+.agent-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(248, 250, 252, 0.9);
+    box-shadow: var(--shadow);
+}
+
+.main-title {
+    font-size: clamp(2rem, 4.2vw, 3.1rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin: 0;
+    color: var(--text-strong);
+}
+
+.subtitle {
+    font-size: 1rem;
+    color: var(--text);
+    line-height: 1.6;
+    max-width: 680px;
+    margin: 0 auto;
+}
+
+.tabs-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 6px auto 20px;
+    padding: 8px;
+    border-radius: 999px;
+    width: fit-content;
+    border: 1px solid var(--border);
+    background: rgba(7, 13, 24, 0.75);
+    backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
+}
+
+.tab-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 10px 18px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    color: var(--text-strong);
+    background: rgba(96, 165, 250, 0.12);
+}
+
+.tab-btn.active {
+    color: var(--text-strong);
+    background: linear-gradient(135deg, rgba(96,165,250,0.28), rgba(59,130,246,0.2));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.tab-content {
+    width: 100%;
+    max-width: 860px;
+    display: flex;
+    justify-content: center;
+}
+
+.card,
+.livekit-setup-card {
+    width: 100%;
+    background: linear-gradient(180deg, var(--panel) 0%, rgba(8, 15, 28, 0.98) 100%);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 28px;
+    box-shadow: var(--shadow);
+    text-align: left;
+}
+
+.card h2,
+.livekit-setup-card h2 {
+    margin-bottom: 8px;
+    color: var(--text-strong);
+}
+
+.recorder-section {
+    margin-top: 18px;
+}
+
+.recorder-section button,
+.join-btn,
+.disconnect-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 12px 20px;
+    font-size: 0.96rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: white;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    box-shadow: 0 12px 26px -14px rgba(59, 130, 246, 0.8);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.recorder-section button:hover,
+.join-btn:hover,
+.disconnect-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 30px -14px rgba(59, 130, 246, 0.95);
+}
+
+.recorder-section button:active,
+.join-btn:active,
+.disconnect-btn:active {
+    transform: translateY(0) scale(0.99);
+}
+
+.fade-in {
+    animation: fadeIn 0.32s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.transcript-card {
+    margin-top: 24px;
+}
+
+.transcript-box {
+    padding: 16px 18px;
+    border-radius: 16px;
+    min-height: 110px;
+    background: rgba(15, 23, 42, 0.84);
+    border: 1px solid var(--border);
+    color: var(--text-strong);
+    font-size: 0.98rem;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.audio-response-card {
+    margin-top: 22px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.audio-response-card h3 {
+    margin-bottom: 10px;
+    color: var(--text-strong);
+}
+
+.audio-response-card audio {
+    width: 100%;
+    border-radius: 12px;
+}
+
+.setup-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--text-strong);
+}
+
+.form-group input {
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.88);
+    color: var(--text-strong);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-group input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+.error-message {
+    padding: 12px 14px;
+    color: #fecaca;
+    background: rgba(248, 113, 113, 0.14);
+    border: 1px solid rgba(248, 113, 113, 0.24);
+    border-radius: 12px;
+}
+
+.livekit-room-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    text-align: left;
+}
+
+.livekit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: rgba(14, 23, 43, 0.88);
+    box-shadow: var(--shadow);
+}
+
+.livekit-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-strong);
+}
+
+.livekit-video-wrapper {
+    height: 500px;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    background: #020617;
+}
+
+.agent-bot-card {
+    padding: 16px;
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.82);
+    border: 1px solid var(--border);
+}
+
+.agent-bot-card h4 {
+    margin: 0 0 8px;
+    color: var(--text-strong);
+}
+
+.agent-bot-card .muted {
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+.agent-panel {
+    padding: 14px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(10, 18, 34, 0.95) 100%);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.agent-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.agent-panel-title {
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: var(--text-strong);
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.84rem;
+    color: var(--text);
+    background: rgba(96, 165, 250, 0.12);
+    border: 1px solid rgba(96, 165, 250, 0.18);
+    border-radius: 999px;
+    padding: 6px 10px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--success);
+}
+
+.status-dot.offline {
+    background: #f87171;
+}
+
+.agent-chat-list {
+    max-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 4px;
+}
+
+.agent-chat-item {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(15, 23, 42, 0.8);
+}
+
+.agent-chat-item.user {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(96, 165, 250, 0.26);
+}
+
+.agent-chat-item.agent {
+    background: rgba(52, 211, 153, 0.12);
+    border-color: rgba(52, 211, 153, 0.2);
+}
+
+.agent-chat-item strong {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-strong);
+    margin-bottom: 4px;
+}
+
+.agent-chat-item .bubble-text {
+    font-size: 0.95rem;
+    color: var(--text-strong);
+    line-height: 1.5;
+}
+
+.agent-chat-item .meta {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 0.74rem;
+    color: var(--muted);
+}
+
+.agent-empty {
+    padding: 20px 10px;
+    text-align: center;
+    color: var(--muted);
+    border: 1px dashed rgba(148, 163, 184, 0.2);
+    border-radius: 12px;
+}
+
+@keyframes avatar-pulse {
+    0% { transform: scale(0.94); opacity: 0.9; }
+    70% { transform: scale(1.18); opacity: 0; }
+    100% { opacity: 0; }
+}
+
+@media (max-width: 640px) {
+    .app-container { padding: 24px 14px 60px; }
+    .card, .livekit-setup-card { padding: 20px; border-radius: 18px; }
+    .tabs-container { border-radius: 20px; }
+    .tab-btn { padding: 9px 14px; font-size: 0.9rem; }
+    .livekit-header { flex-direction: column; align-items: flex-start; }
+    .livekit-video-wrapper { height: 360px; }
+}
