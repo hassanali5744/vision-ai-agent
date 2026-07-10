@@ -52,12 +52,13 @@ from app.websocket_manager import (
     notify_partial_transcript,
 )
 
+# Models tried in order until one succeeds. Using Gemini 2.5 and 1.5 models.
 MODELS_TO_TRY = [
-    "qwen/qwen3-32b:free",
-    "google/gemma-3-27b-it:free",
-    "deepseek/deepseek-chat-v3-0324",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "mistralai/mistral-small-3.2-24b-instruct:free",
+    "google/gemini-2.5-flash",
+    "google/gemini-2.5-flash:free",
+    "google/gemini-1.5-flash",
+    "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-chat",
 ]
 # Global variable to store the active behavior script
 _active_behavior_script: dict | None = None
@@ -120,10 +121,16 @@ def build_system_prompt(
     
     # If no custom instructions are set, use default behavior
     if not instructions:
-        return "You are a helpful AI assistant. Greet the user and have a natural conversation."
+        instructions = "You are a helpful AI assistant. Greet the user and have a natural conversation."
     
-    # Use the custom instructions directly - the script defines everything
-    return instructions
+    # Add constraints to the custom instructions for smarter, more natural behavior
+    constraints = (
+        " Keep responses under 20 words. Stay focused on the instructions. Do NOT repeat questions you have already asked. "
+        "Once you have gathered all the requested information or completed the task, politely end the conversation by saying 'Thanks for your time' or something similar. "
+        "If the user asks about topics completely unrelated to your instructions, politely say 'I don't know' or redirect them back to the topic. "
+        "Vary your phrasing; do not use the exact same sentence repeatedly."
+    )
+    return instructions + constraints
 
 
 def get_worker_port() -> int:
@@ -132,14 +139,13 @@ def get_worker_port() -> int:
         try:
             return int(configured_port)
         except ValueError:
-            print(f"Invalid LIVEKIT_AGENT_PORT value {configured_port!r}; using an auto-selected port instead.")
-
-    # NOTE: there is an inherent (small) TOCTOU race here -- the socket used
-    # to discover a free port is closed before the caller binds to it, so in
-    # theory another process could grab the port in between. This is a
-    # standard, generally-accepted trade-off for "find a free port" helpers
-    # in Python since there's no atomic "reserve and hand off" primitive
-    # across processes. If strict guarantees are required, bind the real
+            pass
+    
+    # Let the OS pick a free port by binding a temporary socket
+    import socket
+    # We only use the OS to give us a port number, then we pass it to livekit
+    # which binds its own socket. This is slightly racy but usually works.
+    # A cleaner approach in production is to pass a config instructing the
     # server directly to port 0 instead of pre-selecting a port here.
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -157,11 +163,10 @@ def get_openai_client() -> OpenAI | None:
         print("[ERROR] OPENAI_API_KEY is not configured")
         return None
 
-    return  OpenAI(
+    return OpenAI (
     api_key=api_key,
-    base_url="https://openrouter.ai/api/v1",
-)
-
+    base_url="https://openrouter.ai/api/v1"
+    )
 
 def normalize_spoken_text(text: str) -> str:
     """Normalize spoken text for better pattern matching (email extraction only)."""
@@ -174,6 +179,11 @@ def normalize_spoken_text(text: str) -> str:
 def looks_like_complete_sentence(text: str) -> bool:
     """Return True when the model output looks like a complete sentence."""
     cleaned = re.sub(r"\s+", " ", (text or "")).strip()
+    if not cleaned:
+        return False
+
+    # Strip surrounding quotes that some models return
+    cleaned = cleaned.strip('"\'').strip()
     if not cleaned:
         return False
 
@@ -283,21 +293,18 @@ async def get_ai_reply(
     instructions = get_script_field("instructions", "")
     
     if not client:
-        # Fallback responses if API fails - use script instructions if available
-        if instructions:
-            return instructions
-        
-        # Default fallback if no script
-        return "I'm having technical difficulties. Please try again."
+        return "I don't know right now."
 
     # Build the system prompt
     system_prompt = build_system_prompt(name, email, collection_complete)
 
-    # Prepare messages for Gemini - NO conversation history to save tokens
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_input}
-    ]
+    # Prepare messages for Gemini - use history so it remembers what it asked!
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    if conversation_history:
+        messages.extend(conversation_history[-15:])
+    else:
+        messages.append({"role": "user", "content": user_input})
 
     # Try multiple models with retry logic
     for attempt, model in enumerate(MODELS_TO_TRY):
@@ -320,7 +327,7 @@ async def get_ai_reply(
                 model=model,
                 messages=retry_messages,
                 temperature=0.2,
-                max_tokens=50,  # Reduced for lightweight responses
+                max_tokens=30,  # Reduced for short, focused responses
             )
 
             text = response.choices[0].message.content
@@ -338,12 +345,7 @@ async def get_ai_reply(
             continue
 
     print("[ERROR] All models failed, using fallback")
-    # Fallback responses if all models fail - use script instructions
-    if instructions:
-        return instructions
-    
-    # Default fallback if no script
-    return "I'm having technical difficulties. Please try again."
+    return "This is not in my range."
 
 
 async def send_response(
@@ -360,6 +362,7 @@ async def send_response(
         return
 
     import base64
+    import uuid
     from app.elevenlabservice import text_to_speech
 
     # Notify frontend that agent is speaking (transitions state to Speaking)
@@ -375,6 +378,9 @@ async def send_response(
     except Exception as e:
         print(f"[ERROR] Failed to generate ElevenLabs TTS: {e}")
 
+    # Generate a unique audio ID for tracking
+    audio_id = str(uuid.uuid4())
+
     # Send text via data channel
     payload = {
         "type": "agent_message",
@@ -382,23 +388,30 @@ async def send_response(
         "listen": listen,
         "phase": phase,
         "has_audio": audio_b64 is not None,
+        "audio_id": audio_id,
     }
     await room.local_participant.publish_data(json.dumps(payload), reliable=True)
     print(f"[INFO] Response sent: {response_text}")
 
     # Send audio in chunks if available (LiveKit data channel limit is ~64KB)
     if audio_b64:
-        chunk_size = 50000  # Safe margin under 64KB limit
+        chunk_size = 15000  # Safe size for WebRTC to prevent silent packet drops
+        total_chunks = (len(audio_b64) + chunk_size - 1) // chunk_size
         for i in range(0, len(audio_b64), chunk_size):
             chunk = audio_b64[i:i + chunk_size]
             audio_payload = {
                 "type": "audio_chunk",
+                "audio_id": audio_id,
                 "chunk": chunk,
                 "index": i // chunk_size,
-                "total_chunks": (len(audio_b64) + chunk_size - 1) // chunk_size,
+                "total_chunks": total_chunks,
             }
             await room.local_participant.publish_data(json.dumps(audio_payload), reliable=True)
-        print(f"[INFO] Audio sent in {(len(audio_b64) + chunk_size - 1) // chunk_size} chunks")
+            await asyncio.sleep(0.02)  # Tiny pause to avoid WebRTC buffer overflow
+        print(f"[INFO] Audio sent in {total_chunks} chunks")
+    else:
+        # No audio available, transition to Idle immediately
+        await notify_agent_finished_speaking(session_id)
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -446,6 +459,22 @@ async def entrypoint(ctx: agents.JobContext):
         )
 
         phase = "conversation"
+        
+        # Add the greeting to the conversation history so it remembers it already greeted!
+        conversation_history.append({"role": "assistant", "content": greeting})
+        
+        # Save greeting to database so it appears in the frontend history
+        try:
+            await save_chat_message(
+                room=room.name or "voice-demo",
+                participant=identity,
+                speaker="assistant",
+                text=greeting,
+                metadata={"source": "livekit_reply", "phase": phase},
+            )
+        except Exception as db_error:
+            print(f"[WARN] Failed to save initial greeting to MongoDB: {db_error}")
+            
         await send_response(room, greeting, room.name or "voice-demo", listen=True, phase=phase)
         print(f"[INFO] Greeting sent to {identity}: {greeting}")
 
@@ -492,7 +521,7 @@ async def entrypoint(ctx: agents.JobContext):
 
                 # Save user transcript to database
                 try:
-                    save_chat_message(
+                    await save_chat_message(
                         room=room.name or "voice-demo",
                         participant=identity,
                         speaker="user",
@@ -528,7 +557,7 @@ async def entrypoint(ctx: agents.JobContext):
                 # Save AI response to database
                 if reply:
                     try:
-                        save_chat_message(
+                        await save_chat_message(
                             room=room.name or "voice-demo",
                             participant=identity,
                             speaker="assistant",
@@ -551,6 +580,18 @@ async def entrypoint(ctx: agents.JobContext):
         sender = packet.participant.identity if packet.participant else "server"
         data_len = len(packet.data) if packet.data else 0
         print(f"[DEBUG] Data received from {sender}, bytes={data_len}")
+
+        # Check for playback_finished signal from frontend
+        try:
+            if packet.data:
+                payload = json.loads(packet.data.decode("utf-8"))
+                if payload.get("type") == "playback_finished":
+                    print("[DEBUG] Playback finished signal received, transitioning to Idle")
+                    task = asyncio.create_task(notify_agent_finished_speaking(room.name or "voice-demo"))
+                    _track(task)
+                    return
+        except Exception as exc:
+            print(f"[DEBUG] Failed to parse playback_finished signal: {exc}")
 
         task = asyncio.create_task(process_user_transcript(packet))
         _track(task)

@@ -32,7 +32,7 @@ def get_scripts_collection():
     return db[MONGODB_SCRIPTS_COLLECTION]
 
 
-def save_chat_message(room: str, participant: str, speaker: str, text: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+async def save_chat_message(room: str, participant: str, speaker: str, text: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     if not text or not str(text).strip():
         return {"stored": False, "reason": "empty_text"}
 
@@ -40,18 +40,29 @@ def save_chat_message(room: str, participant: str, speaker: str, text: str, meta
         collection = get_collection()
         text_clean = str(text).strip()
         
-        # Check for duplicate message within last 30 seconds to prevent duplicates
-        thirty_seconds_ago = datetime.now(timezone.utc) - timedelta(seconds=30)
+        # Check for duplicate message within last 5 seconds to prevent duplicates (reduced from 30)
+        five_seconds_ago = datetime.now(timezone.utc) - timedelta(seconds=5)
         duplicate = collection.find_one({
             "room": room or "voice-demo",
             "speaker": speaker or "user",
             "text": text_clean,
-            "created_at": {"$gte": thirty_seconds_ago}
+            "created_at": {"$gte": five_seconds_ago}
         })
         
         if duplicate:
             print(f"[INFO] Duplicate message detected, skipping save: {text_clean[:50]}...")
             return {"stored": False, "reason": "duplicate", "existing_id": str(duplicate.get("_id"))}
+        
+        # Get the currently active script and include it in metadata
+        active_script_result = get_active_behavior_script()
+        active_script_name = None
+        if active_script_result.get("success") and active_script_result.get("script"):
+            active_script_name = active_script_result["script"].get("name")
+        
+        # Merge metadata with active script name
+        final_metadata = metadata or {}
+        if active_script_name:
+            final_metadata["active_script"] = active_script_name
         
         document = {
             "room": room or "voice-demo",
@@ -59,7 +70,7 @@ def save_chat_message(room: str, participant: str, speaker: str, text: str, meta
             "speaker": speaker or "user",
             "text": text_clean,
             "created_at": datetime.now(timezone.utc),
-            "metadata": metadata or {},
+            "metadata": final_metadata,
         }
         result = collection.insert_one(document)
         return {"stored": True, "id": str(result.inserted_id)}
@@ -154,6 +165,10 @@ def save_behavior_script(name: str, script: dict[str, Any], is_active: bool = Fa
     try:
         collection = get_scripts_collection()
         
+        # If this script is being set as active, deactivate all other scripts first
+        if is_active:
+            collection.update_many({}, {"$set": {"is_active": False}})
+        
         # Check if script with this name already exists
         existing = collection.find_one({"name": name})
         
@@ -228,9 +243,10 @@ def get_active_behavior_script() -> dict[str, Any]:
 
 
 def delete_behavior_script(name: str | None = None, script_id: str | None = None) -> dict[str, Any]:
-    """Delete a behavior script by name or ID."""
+    """Delete a behavior script by name or ID and clean up associated conversation history."""
     try:
-        collection = get_scripts_collection()
+        scripts_collection = get_scripts_collection()
+        messages_collection = get_collection()
         query: dict[str, Any] = {}
         
         if name:
@@ -240,9 +256,25 @@ def delete_behavior_script(name: str | None = None, script_id: str | None = None
         else:
             return {"success": False, "error": "Either name or script_id must be provided"}
         
-        result = collection.delete_one(query)
+        # Get the script name before deletion (for cleanup)
+        script_to_delete = scripts_collection.find_one(query)
+        if not script_to_delete:
+            return {"success": False, "error": "Script not found"}
+        
+        script_name = script_to_delete.get("name")
+        
+        # Delete the script
+        result = scripts_collection.delete_one(query)
+        
         if result.deleted_count > 0:
-            return {"success": True, "deleted": result.deleted_count}
+            # Clean up all conversation messages associated with this script
+            if script_name:
+                delete_result = messages_collection.delete_many({
+                    "metadata.active_script": script_name
+                })
+                print(f"[INFO] Deleted {delete_result.deleted_count} conversation messages for script '{script_name}'")
+            
+            return {"success": True, "deleted": result.deleted_count, "messages_cleaned": delete_result.deleted_count if script_name else 0}
         return {"success": False, "error": "Script not found"}
     except PyMongoError as exc:
         print(f"[ERROR] MongoDB delete behavior script failed: {exc}")

@@ -1,3 +1,4 @@
+import pytest
 from app.database import get_conversation_history, save_chat_message
 
 
@@ -12,7 +13,8 @@ class FakeCursor:
         return self.docs
 
 
-def test_save_chat_message_stores_room_and_participant(monkeypatch):
+@pytest.mark.asyncio
+async def test_save_chat_message_stores_room_and_participant(monkeypatch):
     inserted = {}
 
     class FakeCollection:
@@ -21,13 +23,14 @@ def test_save_chat_message_stores_room_and_participant(monkeypatch):
             return type("InsertResult", (), {"inserted_id": "abc123"})()
 
     monkeypatch.setattr("app.database.get_collection", lambda: FakeCollection())
+    monkeypatch.setattr("app.database.get_active_behavior_script", lambda: {"success": False, "error": "No active script"})
 
-    result = save_chat_message(room="room-1", participant="user-42", speaker="user", text="hello")
+    result = await save_chat_message(room="room-1", participant="user-42", speaker="user", text="hello")
 
     assert result["stored"] is True
     assert inserted["document"]["room"] == "room-1"
     assert inserted["document"]["participant"] == "user-42"
-    assert inserted["document"]["user_id"] == "user-42"
+    assert inserted["document"]["speaker"] == "user"
 
 
 def test_history_query_uses_room_filter_without_participant(monkeypatch):

@@ -33,7 +33,8 @@ function RoomMessageListener({ roomName, participantName }) {
     const chunksRef = useRef([]);
     const mimeTypeRef = useRef("");
     const audioRef = useRef(null);
-    const audioChunksRef = useRef({ chunks: [], totalChunks: 0, receivedChunks: 0 });
+    const audioChunksRef = useRef({ audioId: null, chunks: [], totalChunks: 0, receivedChunks: 0 });
+    const roomRef = useRef(null);
 
     // Use our unified WebSocket hook for session sync
     const { connected: wsConnected, lastMessage, sendMessage } = useWebSocket(roomName || "voice-demo");
@@ -56,6 +57,8 @@ function RoomMessageListener({ roomName, participantName }) {
     useEffect(() => {
         if (!room) return;
 
+        roomRef.current = room;
+
         const updateConnectionState = () => {
             setConnectionState(room.state);
         };
@@ -65,6 +68,7 @@ function RoomMessageListener({ roomName, participantName }) {
 
         return () => {
             room.off("connectionStateChanged", updateConnectionState);
+            roomRef.current = null;
         };
     }, [room]);
 
@@ -85,19 +89,37 @@ function RoomMessageListener({ roomName, participantName }) {
 
         audio.onended = () => {
             console.log("[Audio] Playback finished naturally.");
-            sendMessage({ type: "playback_finished" });
+            // Send via LiveKit data channel instead of WebSocket
+            const currentRoom = roomRef.current;
+            if (currentRoom && currentRoom.localParticipant) {
+                const payload = JSON.stringify({ type: "playback_finished" });
+                const data = new TextEncoder().encode(payload);
+                currentRoom.localParticipant.publishData(data, { reliable: true });
+            }
             audioRef.current = null;
         };
 
         audio.onerror = (e) => {
             console.error("[Audio] Playback error:", e);
-            sendMessage({ type: "playback_finished" });
+            // Send via LiveKit data channel instead of WebSocket
+            const currentRoom = roomRef.current;
+            if (currentRoom && currentRoom.localParticipant) {
+                const payload = JSON.stringify({ type: "playback_finished" });
+                const data = new TextEncoder().encode(payload);
+                currentRoom.localParticipant.publishData(data, { reliable: true });
+            }
             audioRef.current = null;
         };
 
         audio.play().catch((err) => {
             console.error("[Audio] Failed to play audio:", err);
-            sendMessage({ type: "playback_finished" });
+            // Send via LiveKit data channel instead of WebSocket
+            const currentRoom = roomRef.current;
+            if (currentRoom && currentRoom.localParticipant) {
+                const payload = JSON.stringify({ type: "playback_finished" });
+                const data = new TextEncoder().encode(payload);
+                currentRoom.localParticipant.publishData(data, { reliable: true });
+            }
             audioRef.current = null;
         });
     };
@@ -132,7 +154,13 @@ function RoomMessageListener({ roomName, participantName }) {
 
             recorder.onerror = (event) => {
                 console.error("[ERROR] MediaRecorder error:", event.error || event);
-                sendMessage({ type: "playback_finished" });
+                // Send via LiveKit data channel instead of WebSocket
+                const currentRoom = roomRef.current;
+                if (currentRoom && currentRoom.localParticipant) {
+                    const payload = JSON.stringify({ type: "playback_finished" });
+                    const data = new TextEncoder().encode(payload);
+                    currentRoom.localParticipant.publishData(data, { reliable: true });
+                }
             };
 
             recorder.onstop = async () => {
@@ -146,7 +174,13 @@ function RoomMessageListener({ roomName, participantName }) {
                 mediaRecorderRef.current = null;
 
                 if (!audioBlob.size || audioBlob.size < 200) {
-                    sendMessage({ type: "playback_finished" });
+                    // Send via LiveKit data channel instead of WebSocket
+                    const currentRoom = roomRef.current;
+                    if (currentRoom && currentRoom.localParticipant) {
+                        const payload = JSON.stringify({ type: "playback_finished" });
+                        const data = new TextEncoder().encode(payload);
+                        currentRoom.localParticipant.publishData(data, { reliable: true });
+                    }
                     return;
                 }
 
@@ -155,7 +189,13 @@ function RoomMessageListener({ roomName, participantName }) {
                     const text = result?.transcript?.trim();
 
                     if (!text || text.length < 2) {
-                        sendMessage({ type: "playback_finished" });
+                        // Send via LiveKit data channel instead of WebSocket
+                        const currentRoom = roomRef.current;
+                        if (currentRoom && currentRoom.localParticipant) {
+                            const payload = JSON.stringify({ type: "playback_finished" });
+                            const data = new TextEncoder().encode(payload);
+                            currentRoom.localParticipant.publishData(data, { reliable: true });
+                        }
                         return;
                     }
 
@@ -176,14 +216,26 @@ function RoomMessageListener({ roomName, participantName }) {
                     }
                 } catch (error) {
                     console.error("[ERROR] Failed to transcribe audio:", error);
-                    sendMessage({ type: "playback_finished" });
+                    // Send via LiveKit data channel instead of WebSocket
+                    const currentRoom = roomRef.current;
+                    if (currentRoom && currentRoom.localParticipant) {
+                        const payload = JSON.stringify({ type: "playback_finished" });
+                        const data = new TextEncoder().encode(payload);
+                        currentRoom.localParticipant.publishData(data, { reliable: true });
+                    }
                 }
             };
 
             recorder.start();
         } catch (error) {
             console.error("[ERROR] Failed to start recording:", error);
-            sendMessage({ type: "playback_finished" });
+            // Send via LiveKit data channel instead of WebSocket
+            const currentRoom = roomRef.current;
+            if (currentRoom && currentRoom.localParticipant) {
+                const payload = JSON.stringify({ type: "playback_finished" });
+                const data = new TextEncoder().encode(payload);
+                currentRoom.localParticipant.publishData(data, { reliable: true });
+            }
         }
     };
 
@@ -214,6 +266,49 @@ function RoomMessageListener({ roomName, participantName }) {
                 return;
             }
 
+            const speakBrowserTTS = (text) => {
+                if (!window.speechSynthesis) {
+                    console.error("[ERROR] Browser TTS not supported.");
+                    const currentRoom = roomRef.current;
+                    if (currentRoom && currentRoom.localParticipant) {
+                        const payload = JSON.stringify({ type: "playback_finished" });
+                        const data = new TextEncoder().encode(payload);
+                        currentRoom.localParticipant.publishData(data, { reliable: true });
+                    }
+                    return;
+                }
+                
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                const voices = window.speechSynthesis.getVoices();
+                const englishVoices = voices.filter(v => v.lang.startsWith('en'));
+                if (englishVoices.length > 0) {
+                    utterance.voice = englishVoices[0];
+                }
+                
+                utterance.onend = () => {
+                    const currentRoom = roomRef.current;
+                    if (currentRoom && currentRoom.localParticipant) {
+                        const payload = JSON.stringify({ type: "playback_finished" });
+                        const data = new TextEncoder().encode(payload);
+                        currentRoom.localParticipant.publishData(data, { reliable: true });
+                    }
+                };
+                
+                utterance.onerror = (e) => {
+                    console.error("[ERROR] Browser TTS failed:", e);
+                    const currentRoom = roomRef.current;
+                    if (currentRoom && currentRoom.localParticipant) {
+                        const payload = JSON.stringify({ type: "playback_finished" });
+                        const data = new TextEncoder().encode(payload);
+                        currentRoom.localParticipant.publishData(data, { reliable: true });
+                    }
+                };
+                
+                window.speechSynthesis.speak(utterance);
+            };
+
             try {
                 let data;
                 if (payload instanceof Uint8Array || payload instanceof ArrayBuffer) {
@@ -236,37 +331,50 @@ function RoomMessageListener({ roomName, participantName }) {
                     ]);
                     
                     if (data.has_audio) {
-                        // Reset chunk collection for new audio
-                        audioChunksRef.current = { chunks: [], totalChunks: 0, receivedChunks: 0 };
+                        // Reset chunk collection for new audio ID
+                        audioChunksRef.current = { audioId: data.audio_id, chunks: [], totalChunks: 0, receivedChunks: 0 };
                     } else {
-                        // No audio available
-                        sendMessage({ type: "playback_finished" });
+                        // Fallback to browser TTS if no audio available
+                        speakBrowserTTS(data.text);
                     }
                 } else if (data.type === "audio_chunk") {
-                    const { chunk, index, total_chunks } = data;
+                    const { audio_id, chunk, index, total_chunks } = data;
                     const chunksRef = audioChunksRef.current;
                     
-                    // Initialize if first chunk
+                    // Only process chunks for the current audio response
+                    if (!chunksRef.audioId || chunksRef.audioId !== audio_id) {
+                        return;
+                    }
+
+                    // Initialize the array if we haven't yet (totalChunks will be 0 initially)
                     if (chunksRef.totalChunks === 0) {
                         chunksRef.totalChunks = total_chunks;
-                        chunksRef.chunks = new Array(total_chunks);
+                        // Use Array.from to create an array with actual undefined values, not empty slots
+                        chunksRef.chunks = Array.from({ length: total_chunks });
+                        chunksRef.receivedChunks = 0;
                     }
-                    
-                    // Store chunk at correct index
-                    chunksRef.chunks[index] = chunk;
-                    chunksRef.receivedChunks++;
+
+                    if (data.index >= 0 && data.index < chunksRef.totalChunks) {
+                        // Only increment if we haven't received this specific chunk yet
+                        if (chunksRef.chunks[data.index] === undefined) {
+                            chunksRef.chunks[data.index] = data.chunk;
+                            chunksRef.receivedChunks++;
+                        }
+                    }
                     
                     // Check if all chunks received
                     if (chunksRef.receivedChunks === chunksRef.totalChunks) {
+                        // All chunks are guaranteed to be populated now
                         const fullAudio = chunksRef.chunks.join("");
                         playBase64Audio(fullAudio);
-                        // Reset for next audio
-                        audioChunksRef.current = { chunks: [], totalChunks: 0, receivedChunks: 0 };
+                        // Clear audioId to prevent replay
+                        chunksRef.audioId = null;
+                        chunksRef.totalChunks = 0;
+                        chunksRef.receivedChunks = 0;
                     }
                 }
             } catch (error) {
-                console.error("[ERROR] Failed to handle agent data:", error);
-                sendMessage({ type: "playback_finished" });
+                console.error("[ERROR] Failed to parse data channel message:", error);
             }
         };
 
@@ -274,26 +382,8 @@ function RoomMessageListener({ roomName, participantName }) {
 
         return () => {
             room.off("dataReceived", handleDataReceived);
-
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-                mediaRecorderRef.current.stop();
-            }
-
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach((track) => track.stop());
-                streamRef.current = null;
-            }
-
-            if (audioRef.current) {
-                try {
-                    audioRef.current.pause();
-                } catch (err) {
-                    // Ignore
-                }
-                audioRef.current = null;
-            }
         };
-    }, [room, connectionState, roomName, participantName, lastMessage]);
+    }, [room, connectionState]);
 
     const statusLabel =
         conversationState === "listening"
@@ -326,19 +416,27 @@ function RoomMessageListener({ roomName, participantName }) {
                 </div>
             </div>
 
-            <div style={{ marginBottom: "12px" }}>
+            <div style={{ marginBottom: "16px" }}>
                 <button
                     type="button"
                     onClick={handleMicToggle}
                     disabled={conversationState === "processing" || conversationState === "speaking" || connectionState !== ConnectionState.Connected}
                     style={{
-                        padding: "10px 14px",
+                        padding: "14px 28px",
                         borderRadius: "999px",
                         border: "none",
                         cursor: conversationState === "processing" || conversationState === "speaking" ? "not-allowed" : "pointer",
-                        background: conversationState === "listening" ? "#dc2626" : "#2563eb",
+                        background: conversationState === "listening" 
+                            ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" 
+                            : "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
                         color: "white",
-                        fontWeight: 600,
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        boxShadow: conversationState === "listening" 
+                            ? "0 4px 20px rgba(239, 68, 68, 0.4)" 
+                            : "0 4px 20px rgba(59, 130, 246, 0.4)",
+                        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                        transform: conversationState === "listening" ? "scale(1.05)" : "scale(1)"
                     }}
                 >
                     {conversationState === "listening"
@@ -352,7 +450,7 @@ function RoomMessageListener({ roomName, participantName }) {
             </div>
 
             {transcript && (
-                <div className="agent-chat-item user" style={{ marginBottom: "10px" }}>
+                <div className="agent-chat-item user" style={{ marginBottom: "12px", animation: "fadeIn 0.3s ease" }}>
                     <strong>Latest transcript</strong>
                     <div className="bubble-text">{transcript}</div>
                 </div>

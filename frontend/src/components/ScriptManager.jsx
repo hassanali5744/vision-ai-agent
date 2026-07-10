@@ -77,7 +77,7 @@ function ScriptManager() {
             setSuccess(null);
 
             const payload = {
-                name: formData.name,
+                name: formData.name.trim(),
                 script: formData.script,
                 is_active: formData.is_active,
             };

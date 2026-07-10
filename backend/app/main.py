@@ -277,7 +277,7 @@ async def save_message(payload: dict):
         text = payload.get("text")
         metadata = payload.get("metadata") or {}
 
-        result = save_chat_message(room, participant, speaker, text, metadata)
+        result = await save_chat_message(room, participant, speaker, text, metadata)
         if not isinstance(result, dict):
             # Defensive: don't let an unexpected return type from
             # save_chat_message crash this endpoint with an AttributeError.
