@@ -43,7 +43,7 @@ import json
 
 from livekit import agents, rtc
 from openai import OpenAI
-from app.database import save_chat_message
+from app.database import save_chat_message, get_active_behavior_script
 from app.websocket_manager import (
     notify_agent_finished_speaking,
     notify_agent_speaking,
@@ -52,11 +52,42 @@ from app.websocket_manager import (
     notify_partial_transcript,
 )
 
-# Models tried in order until one succeeds. Using Gemini Flash models for speed.
 MODELS_TO_TRY = [
-    "gemini-1.5-flash",      # Latest Flash model, very fast
-    "gemini-1.5-flash-8b",   # 8B parameter Flash model, even faster
+    "qwen/qwen3-32b:free",
+    "google/gemma-3-27b-it:free",
+    "deepseek/deepseek-chat-v3-0324",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "mistralai/mistral-small-3.2-24b-instruct:free",
 ]
+# Global variable to store the active behavior script
+_active_behavior_script: dict | None = None
+
+
+def load_active_behavior_script() -> dict | None:
+    """Load the active behavior script from database."""
+    global _active_behavior_script
+    try:
+        result = get_active_behavior_script()
+        if result.get("success") and result.get("script"):
+            _active_behavior_script = result["script"]
+            print(f"[INFO] Loaded active behavior script: {_active_behavior_script.get('name', 'unnamed')}")
+            return _active_behavior_script
+        else:
+            print("[WARN] No active behavior script found, using default behavior")
+            _active_behavior_script = None
+            return None
+    except Exception as e:
+        print(f"[ERROR] Failed to load active behavior script: {e}")
+        _active_behavior_script = None
+        return None
+
+
+def get_script_field(field: str, default: str = "") -> str:
+    """Get a field from the active behavior script, with fallback to default."""
+    global _active_behavior_script
+    if _active_behavior_script and "script" in _active_behavior_script:
+        return _active_behavior_script["script"].get(field, default)
+    return default
 
 # Common non-name utterances that must never be captured by the fallback
 # "bare single-line" name pattern below. This is not exhaustive by design --
@@ -83,16 +114,16 @@ def build_system_prompt(
     email: str | None,
     collection_complete: bool,
 ) -> str:
-    """Build the system prompt for Gemini based on current collection state."""
-    if collection_complete:
-        return f"Name: {name}, Email: {email}. Collection complete. Respond with one short sentence."
-
-    if name and not email:
-        return f"Name: {name}. Ask for email in one short sentence."
-    elif not name:
-        return "Ask for name in one short sentence."
-    else:
-        return "Ask for name and email in one short sentence."
+    """Build the system prompt for Gemini based on the active behavior script instructions."""
+    # Get the free-form instructions from the active behavior script
+    instructions = get_script_field("instructions", "")
+    
+    # If no custom instructions are set, use default behavior
+    if not instructions:
+        return "You are a helpful AI assistant. Greet the user and have a natural conversation."
+    
+    # Use the custom instructions directly - the script defines everything
+    return instructions
 
 
 def get_worker_port() -> int:
@@ -126,10 +157,10 @@ def get_openai_client() -> OpenAI | None:
         print("[ERROR] OPENAI_API_KEY is not configured")
         return None
 
-    return OpenAI(
-        api_key=api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta",
-    )
+    return  OpenAI(
+    api_key=api_key,
+    base_url="https://openrouter.ai/api/v1",
+)
 
 
 def normalize_spoken_text(text: str) -> str:
@@ -247,13 +278,17 @@ async def get_ai_reply(
 ) -> str:
     """Get AI reply from Gemini API with proper context."""
     client = get_openai_client()
+    
+    # Get script instructions for fallback
+    instructions = get_script_field("instructions", "")
+    
     if not client:
-        # Fallback responses if API fails
-        if collection_complete:
-            return "Your name and email are saved. Onboarding is complete."
-        if name and not email:
-            return f"Thanks, {name}. What is your email address?"
-        return "What is your name?"
+        # Fallback responses if API fails - use script instructions if available
+        if instructions:
+            return instructions
+        
+        # Default fallback if no script
+        return "I'm having technical difficulties. Please try again."
 
     # Build the system prompt
     system_prompt = build_system_prompt(name, email, collection_complete)
@@ -303,12 +338,12 @@ async def get_ai_reply(
             continue
 
     print("[ERROR] All models failed, using fallback")
-    # Fallback responses if all models fail
-    if collection_complete:
-        return "Your name and email are saved. Onboarding is complete."
-    if name and not email:
-        return f"Thanks, {name}. What is your email address?"
-    return "What is your name?"
+    # Fallback responses if all models fail - use script instructions
+    if instructions:
+        return instructions
+    
+    # Default fallback if no script
+    return "I'm having technical difficulties. Please try again."
 
 
 async def send_response(
@@ -372,13 +407,13 @@ async def entrypoint(ctx: agents.JobContext):
     await ctx.connect()
     print("Worker connected to room.")
 
+    # Load the active behavior script at startup
+    load_active_behavior_script()
+
     room = ctx.room
     welcome_sent: set[str] = set()
     processing_lock = asyncio.Lock()
     shutdown_event = asyncio.Event()
-    collected_name: str | None = None
-    collected_email: str | None = None
-    collection_complete = False
     conversation_history: list[dict[str, str]] = []
     last_processed_transcript: str = ""
     last_process_time: float = 0
@@ -401,22 +436,22 @@ async def entrypoint(ctx: agents.JobContext):
         welcome_sent.add(identity)
         await notify_agent_thinking(room.name or "voice-demo")
 
-        # Get initial greeting from Gemini
+        # Get initial greeting from Gemini based on script instructions
         greeting = await get_ai_reply(
-            "Start the conversation and ask for the user's name",
-            collected_name,
-            collected_email,
-            collection_complete,
+            "Start the conversation",
+            None,  # No name tracking
+            None,  # No email tracking
+            False,  # No collection state
             conversation_history
         )
 
-        phase = "collect_name"
+        phase = "conversation"
         await send_response(room, greeting, room.name or "voice-demo", listen=True, phase=phase)
         print(f"[INFO] Greeting sent to {identity}: {greeting}")
 
     async def process_user_transcript(packet: rtc.DataPacket) -> None:
         """Process incoming user transcript and generate responses."""
-        nonlocal collected_name, collected_email, collection_complete, conversation_history, last_processed_transcript, last_process_time
+        nonlocal conversation_history, last_processed_transcript, last_process_time
 
         try:
             async with processing_lock:
@@ -467,48 +502,21 @@ async def entrypoint(ctx: agents.JobContext):
                 except Exception as db_error:
                     print(f"[WARN] Failed to save livekit transcript to MongoDB: {db_error}")
 
-                # Extract name and email from user input
-                name, email = extract_contact_fields(transcript, collected_name, collected_email)
-
-                # Update collected fields
-                if name and not collected_name:
-                    collected_name = name
-
-                if email and not collected_email:
-                    collected_email = email
-
-                # Check if collection is complete
-                if collected_name and collected_email and not collection_complete:
-                    collection_complete = True
-                    print(f"[INFO] Collection complete for {identity}")
-
-                print(
-                    f"[DEBUG] Collected - Name: {collected_name}, Email: {collected_email}, "
-                    f"Complete: {collection_complete}"
-                )
-
                 await notify_agent_thinking(room.name or "voice-demo")
                 await notify_partial_transcript(room.name or "voice-demo", transcript)
 
-                # Get AI reply based on current state
+                # Get AI reply based on script instructions
                 reply = await get_ai_reply(
                     transcript,
-                    collected_name,
-                    collected_email,
-                    collection_complete,
+                    None,  # No name tracking
+                    None,  # No email tracking
+                    False,  # No collection state
                     conversation_history
                 )
 
-                # Determine phase and listening state
-                if collection_complete:
-                    phase = "complete"
-                    listen = False
-                elif collected_name and not collected_email:
-                    phase = "collect_email"
-                    listen = True
-                else:
-                    phase = "collect_name"
-                    listen = True
+                # Always listen and use conversation phase
+                phase = "conversation"
+                listen = True
 
                 # Add AI response to conversation history
                 conversation_history.append({"role": "assistant", "content": reply})

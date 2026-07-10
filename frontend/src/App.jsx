@@ -3,6 +3,7 @@ import "./App.css";
 
 const LiveKitSession = lazy(() => import("./components/LiveKitRoom"));
 const ConversationHistory = lazy(() => import("./components/ConversationHistory"));
+const ScriptManager = lazy(() => import("./components/ScriptManager"));
 
 function App() {
     const [activeTab, setActiveTab] = useState("livekit");
@@ -44,6 +45,13 @@ function App() {
                 >
                     Conversation History
                 </button>
+
+                <button
+                    className={`tab-btn ${activeTab === "scripts" ? "active" : ""}`}
+                    onClick={() => setActiveTab("scripts")}
+                >
+                    Script Manager
+                </button>
             </div>
 
             <div className="tab-content">
@@ -52,9 +60,13 @@ function App() {
                         <div className="fade-in">
                             <LiveKitSession />
                         </div>
-                    ) : (
+                    ) : activeTab === "history" ? (
                         <div className="fade-in">
                             <ConversationHistory />
+                        </div>
+                    ) : (
+                        <div className="fade-in">
+                            <ScriptManager />
                         </div>
                     )}
                 </Suspense>

@@ -8,7 +8,7 @@ from app.service import transcribe_audio
 from app.elevenlabservice import text_to_speech
 from app import config
 from app.livekit_service import create_participant_token, dispatch_agent_to_room
-from app.database import save_chat_message, mongo_health, get_conversation_history, get_grouped_conversation_history, get_all_rooms
+from app.database import save_chat_message, mongo_health, get_conversation_history, get_grouped_conversation_history, get_all_rooms, save_behavior_script, get_behavior_script, get_all_behavior_scripts, get_active_behavior_script, delete_behavior_script, set_active_behavior_script
 from app.websocket_router import router as websocket_router
 from openai import OpenAI
 
@@ -303,6 +303,128 @@ async def health_check():
         "livekit_configured": bool(config.LIVEKIT_URL and config.LIVEKIT_API_KEY),
         "elevenlabs_configured": bool(config.ELEVENLABS_API_KEY),
     }
+
+
+# Behavior Script Management Endpoints
+
+@app.get("/scripts")
+async def get_scripts():
+    """Get all behavior scripts."""
+    try:
+        result = get_all_behavior_scripts()
+        return result
+    except Exception as exc:
+        print(f"[ERROR] Failed to get scripts: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/scripts/active")
+async def get_active_script():
+    """Get the currently active behavior script."""
+    try:
+        result = get_active_behavior_script()
+        return result
+    except Exception as exc:
+        print(f"[ERROR] Failed to get active script: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/scripts/{script_name}")
+async def get_script_by_name(script_name: str):
+    """Get a specific behavior script by name."""
+    try:
+        result = get_behavior_script(name=script_name)
+        if not result.get("success"):
+            raise HTTPException(status_code=404, detail=result.get("error", "Script not found"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[ERROR] Failed to get script: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/scripts")
+async def create_script(payload: dict):
+    """Create or update a behavior script."""
+    try:
+        if not payload:
+            raise HTTPException(status_code=400, detail="Request body is required")
+
+        name = payload.get("name")
+        script = payload.get("script")
+        is_active = payload.get("is_active", False)
+
+        if not name:
+            raise HTTPException(status_code=400, detail="Missing 'name' in request body")
+        if not script or not isinstance(script, dict):
+            raise HTTPException(status_code=400, detail="Missing or invalid 'script' in request body")
+
+        result = save_behavior_script(name, script, is_active)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to save script"))
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[ERROR] Failed to create script: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.put("/scripts/{script_name}")
+async def update_script(script_name: str, payload: dict):
+    """Update an existing behavior script."""
+    try:
+        if not payload:
+            raise HTTPException(status_code=400, detail="Request body is required")
+
+        script = payload.get("script")
+        is_active = payload.get("is_active")
+
+        if not script or not isinstance(script, dict):
+            raise HTTPException(status_code=400, detail="Missing or invalid 'script' in request body")
+
+        result = save_behavior_script(script_name, script, is_active if is_active is not None else False)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to update script"))
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[ERROR] Failed to update script: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/scripts/{script_name}")
+async def delete_script(script_name: str):
+    """Delete a behavior script by name."""
+    try:
+        result = delete_behavior_script(name=script_name)
+        if not result.get("success"):
+            raise HTTPException(status_code=404, detail=result.get("error", "Script not found"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[ERROR] Failed to delete script: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/scripts/{script_name}/activate")
+async def activate_script(script_name: str):
+    """Set a behavior script as active."""
+    try:
+        result = set_active_behavior_script(name=script_name)
+        if not result.get("success"):
+            raise HTTPException(status_code=404, detail=result.get("error", "Script not found"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[ERROR] Failed to activate script: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 if __name__ == "__main__":
