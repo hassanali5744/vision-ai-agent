@@ -78,6 +78,9 @@ async def websocket_sync_endpoint(websocket: WebSocket) -> None:
                 await websocket_manager.set_state(session_id, "Idle")
                 continue
 
+            # Hold/Resume events are now handled via LiveKit data channel only, not WebSocket
+            # This prevents duplicate state transitions and race conditions
+
             # Client-to-server events are logged but not echoed back
             print(f"[WS] Received client event: {message_type} from session {session_id}")
     except WebSocketDisconnect:

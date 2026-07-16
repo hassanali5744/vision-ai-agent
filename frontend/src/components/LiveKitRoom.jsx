@@ -35,6 +35,10 @@ function RoomMessageListener({ roomName, participantName }) {
     const audioRef = useRef(null);
     const audioChunksRef = useRef({ audioId: null, chunks: [], totalChunks: 0, receivedChunks: 0 });
     const roomRef = useRef(null);
+    const holdMusicRef = useRef(null);
+    const [isOnHold, setIsOnHold] = useState(false);  // useState for immediate UI re-renders
+    const isProcessingHold = useRef(false);  // Prevent duplicate hold/resume operations
+    const manuallyStoppedAudio = useRef(false);  // Track if audio was manually stopped (e.g., on Hold)
 
     // Use our unified WebSocket hook for session sync
     const { connected: wsConnected, lastMessage, sendMessage } = useWebSocket(roomName || "voice-demo");
@@ -43,7 +47,21 @@ function RoomMessageListener({ roomName, participantName }) {
     useEffect(() => {
         if (!lastMessage) return;
         if (lastMessage.type === "state_change") {
-            setConversationState(lastMessage.state.toLowerCase());
+            const newState = lastMessage.state.toLowerCase();
+            setConversationState(newState);
+            
+            // Handle Hold state transitions (sync with backend state_change only)
+            if (newState === "hold" && !isOnHold) {
+                setIsOnHold(true);
+                handleHold();
+                // Reset processing flag on successful hold
+                isProcessingHold.current = false;
+            } else if (newState !== "hold" && isOnHold) {
+                setIsOnHold(false);
+                handleResume();
+                // Reset processing flag on successful resume
+                isProcessingHold.current = false;
+            }
         } else if (lastMessage.type === "connection_established") {
             setConversationState(lastMessage.state.toLowerCase());
         } else if (lastMessage.type === "agent_event") {
@@ -51,7 +69,7 @@ function RoomMessageListener({ roomName, participantName }) {
                 setTranscript(lastMessage.text);
             }
         }
-    }, [lastMessage]);
+    }, [lastMessage, isOnHold]);
 
     // Handle connection state of the LiveKit room
     useEffect(() => {
@@ -74,6 +92,11 @@ function RoomMessageListener({ roomName, participantName }) {
 
     // Helper to play base64-encoded ElevenLabs audio
     const playBase64Audio = (base64Audio) => {
+        if (isOnHold) {
+            console.log("[Audio] Agent is on hold, skipping audio playback");
+            return;
+        }
+
         if (audioRef.current) {
             try {
                 audioRef.current.pause();
@@ -86,18 +109,26 @@ function RoomMessageListener({ roomName, participantName }) {
         const audioUrl = `data:audio/mpeg;base64,${base64Audio}`;
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
+        
+        // Reset manually stopped flag when new audio starts
+        manuallyStoppedAudio.current = false;
 
-        audio.onended = () => {
-            console.log("[Audio] Playback finished naturally.");
-            // Send via LiveKit data channel instead of WebSocket
-            const currentRoom = roomRef.current;
-            if (currentRoom && currentRoom.localParticipant) {
-                const payload = JSON.stringify({ type: "playback_finished" });
-                const data = new TextEncoder().encode(payload);
-                currentRoom.localParticipant.publishData(data, { reliable: true });
+        // Handle audio end event (single listener to prevent duplicates)
+        audio.addEventListener('ended', () => {
+            // Only send playback_finished if not manually stopped (e.g., on Hold)
+            if (!manuallyStoppedAudio.current) {
+                console.log("[Audio] Audio ended naturally, sending playback_finished");
+                const currentRoom = roomRef.current;
+                if (currentRoom && currentRoom.localParticipant) {
+                    const payload = JSON.stringify({ type: "playback_finished" });
+                    const data = new TextEncoder().encode(payload);
+                    currentRoom.localParticipant.publishData(data, { reliable: true });
+                }
+            } else {
+                console.log("[Audio] Audio was manually stopped, skipping playback_finished");
             }
             audioRef.current = null;
-        };
+        });
 
         audio.onerror = (e) => {
             console.error("[Audio] Playback error:", e);
@@ -122,6 +153,176 @@ function RoomMessageListener({ roomName, participantName }) {
             }
             audioRef.current = null;
         });
+    };
+
+    // Hold music playback - beautiful phone call hold melody
+    const playHoldMusic = () => {
+        if (holdMusicRef.current) {
+            return; // Already playing
+        }
+
+        // Create a beautiful hold melody using Web Audio API
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const masterGain = audioContext.createGain();
+        masterGain.connect(audioContext.destination);
+        masterGain.gain.value = 0.08; // Low volume
+        
+        // Create oscillators for a pleasant chord (C major 7th)
+        const frequencies = [261.63, 329.63, 392.00, 493.88]; // C4, E4, G4, B4
+        const oscillators = [];
+        
+        frequencies.forEach((freq, index) => {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            
+            // Add slight detune for richness
+            osc.detune.value = (index - 1.5) * 5;
+            
+            // Create gentle pulsing effect
+            gain.gain.value = 0.3;
+            const lfo = audioContext.createOscillator();
+            const lfoGain = audioContext.createGain();
+            lfo.frequency.value = 0.5; // 0.5 Hz pulsing
+            lfoGain.gain.value = 0.15;
+            lfo.connect(lfoGain.gain);
+            lfo.start();
+            
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start();
+            
+            oscillators.push({ osc, gain, lfo, lfoGain });
+        });
+        
+        holdMusicRef.current = {
+            audioContext,
+            masterGain,
+            oscillators,
+            stop: () => {
+                try {
+                    oscillators.forEach(({ osc, gain, lfo, lfoGain }) => {
+                        lfo.stop();
+                        lfoGain.disconnect();
+                        osc.stop();
+                        gain.disconnect();
+                    });
+                    masterGain.disconnect();
+                    audioContext.close();
+                } catch (e) {
+                    console.warn("[Hold Music] Error stopping hold music:", e);
+                }
+            }
+        };
+        
+        console.log("[Hold Music] Started playing beautiful hold melody");
+    };
+
+    const stopHoldMusic = () => {
+        if (holdMusicRef.current) {
+            holdMusicRef.current.stop();
+            holdMusicRef.current = null;
+            console.log("[Hold Music] Stopped hold tone");
+        }
+    };
+
+    const handleHold = () => {
+        // Prevent duplicate hold operations
+        if (isProcessingHold.current || isOnHold) {
+            console.log("[Hold] Already processing hold or already on hold, skipping");
+            return;
+        }
+        
+        isProcessingHold.current = true;
+        console.log("[Hold] Entering hold state");
+        
+        // IMMEDIATELY stop microphone recording
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+            try {
+                mediaRecorderRef.current.stop();
+                console.log("[Hold] Microphone recording stopped");
+            } catch (err) {
+                console.warn("[Hold] Error stopping recording:", err);
+            }
+        }
+        
+        // IMMEDIATELY stop current audio playback
+        if (audioRef.current) {
+            try {
+                // Mark as manually stopped to prevent duplicate playback_finished events
+                manuallyStoppedAudio.current = true;
+                // Remove event listeners to prevent duplicate events
+                audioRef.current.removeEventListener('ended', null);
+                audioRef.current.removeEventListener('error', null);
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+                audioRef.current.src = "";
+                audioRef.current.load();
+                console.log("[Hold] Audio stopped, reset, and source cleared");
+            } catch (err) {
+                console.warn("[Hold] Error stopping audio:", err);
+            }
+            audioRef.current = null;
+        }
+        
+        // Clear queued audio chunks immediately
+        audioChunksRef.current = { audioId: null, chunks: [], totalChunks: 0, receivedChunks: 0 };
+        console.log("[Hold] Audio chunks cleared");
+        
+        // Cancel browser TTS if active
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            console.log("[Hold] Browser TTS cancelled");
+        }
+        
+        // Start hold music
+        playHoldMusic();
+        
+        // Send hold signal to backend via LiveKit data channel ONLY (no WebSocket duplicate)
+        const currentRoom = roomRef.current;
+        if (currentRoom && currentRoom.localParticipant) {
+            const payload = JSON.stringify({ type: "hold" });
+            const data = new TextEncoder().encode(payload);
+            currentRoom.localParticipant.publishData(data, { reliable: true });
+            console.log("[Hold] Hold signal sent via LiveKit data channel");
+        }
+        
+        // Processing flag will be reset by backend state_change confirmation
+    };
+
+    const handleResume = () => {
+        // Prevent duplicate resume operations
+        if (isProcessingHold.current || !isOnHold) {
+            console.log("[Resume] Already processing resume or not on hold, skipping");
+            return;
+        }
+        
+        isProcessingHold.current = true;
+        console.log("[Resume] Resuming from hold state");
+        
+        // Stop hold music immediately
+        stopHoldMusic();
+        
+        // Send resume signal to backend via LiveKit data channel ONLY (no WebSocket duplicate)
+        const currentRoom = roomRef.current;
+        if (currentRoom && currentRoom.localParticipant) {
+            const payload = JSON.stringify({ type: "resume" });
+            const data = new TextEncoder().encode(payload);
+            currentRoom.localParticipant.publishData(data, { reliable: true });
+            console.log("[Resume] Resume signal sent via LiveKit data channel");
+        }
+        
+        // Processing flag will be reset by backend state_change confirmation
+    };
+
+    const handleHoldResumeToggle = () => {
+        if (isOnHold) {
+            handleResume();
+        } else {
+            handleHold();
+        }
     };
 
     // Recording start function
@@ -248,12 +449,18 @@ function RoomMessageListener({ roomName, participantName }) {
 
     // React to conversation state changes
     useEffect(() => {
+        // Don't start recording if on hold
+        if (isOnHold) {
+            stopRecording();
+            return;
+        }
+        
         if (conversationState === "listening") {
             startRecording();
         } else {
             stopRecording();
         }
-    }, [conversationState]);
+    }, [conversationState, isOnHold]);
 
     // Listen to data channel messages from the LiveKit room (agent response)
     useEffect(() => {
@@ -331,13 +538,28 @@ function RoomMessageListener({ roomName, participantName }) {
                     ]);
                     
                     if (data.has_audio) {
-                        // Reset chunk collection for new audio ID
-                        audioChunksRef.current = { audioId: data.audio_id, chunks: [], totalChunks: 0, receivedChunks: 0 };
+                        // Reset chunk collection for new audio ID (only if not on hold)
+                        if (!isOnHold) {
+                            audioChunksRef.current = { audioId: data.audio_id, chunks: [], totalChunks: 0, receivedChunks: 0 };
+                            console.log("[Audio] New audio ID received, chunk collection reset");
+                        } else {
+                            console.log("[Audio] Agent on hold, ignoring new audio");
+                        }
                     } else {
-                        // Fallback to browser TTS if no audio available
-                        speakBrowserTTS(data.text);
+                        // Fallback to browser TTS if no audio available (only if not on hold)
+                        if (!isOnHold) {
+                            speakBrowserTTS(data.text);
+                        } else {
+                            console.log("[Audio] Agent on hold, skipping TTS");
+                        }
                     }
                 } else if (data.type === "audio_chunk") {
+                    // Skip audio chunks if on hold
+                    if (isOnHold) {
+                        console.log("[Audio] Agent on hold, skipping audio chunk");
+                        return;
+                    }
+                    
                     const { audio_id, chunk, index, total_chunks } = data;
                     const chunksRef = audioChunksRef.current;
                     
@@ -371,6 +593,7 @@ function RoomMessageListener({ roomName, participantName }) {
                         chunksRef.audioId = null;
                         chunksRef.totalChunks = 0;
                         chunksRef.receivedChunks = 0;
+                        console.log("[Audio] All chunks received, playing audio");
                     }
                 }
             } catch (error) {
@@ -385,6 +608,17 @@ function RoomMessageListener({ roomName, participantName }) {
         };
     }, [room, connectionState]);
 
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current = null;
+            }
+            stopHoldMusic();
+        };
+    }, []);
+
     const statusLabel =
         conversationState === "listening"
             ? "Listening"
@@ -392,10 +626,17 @@ function RoomMessageListener({ roomName, participantName }) {
               ? "Processing"
               : conversationState === "speaking"
                 ? "Speaking"
-                : "Idle";
+                : conversationState === "hold"
+                  ? "On Hold"
+                  : "Idle";
 
     const handleMicToggle = () => {
         if (connectionState !== ConnectionState.Connected) {
+            return;
+        }
+
+        if (isOnHold) {
+            // Don't allow mic toggle while on hold
             return;
         }
 
@@ -416,16 +657,16 @@ function RoomMessageListener({ roomName, participantName }) {
                 </div>
             </div>
 
-            <div style={{ marginBottom: "16px" }}>
+            <div style={{ marginBottom: "16px", display: "flex", gap: "12px", alignItems: "center" }}>
                 <button
                     type="button"
                     onClick={handleMicToggle}
-                    disabled={conversationState === "processing" || conversationState === "speaking" || connectionState !== ConnectionState.Connected}
+                    disabled={conversationState === "processing" || conversationState === "speaking" || conversationState === "hold" || connectionState !== ConnectionState.Connected}
                     style={{
                         padding: "14px 28px",
                         borderRadius: "999px",
                         border: "none",
-                        cursor: conversationState === "processing" || conversationState === "speaking" ? "not-allowed" : "pointer",
+                        cursor: conversationState === "processing" || conversationState === "speaking" || conversationState === "hold" ? "not-allowed" : "pointer",
                         background: conversationState === "listening" 
                             ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" 
                             : "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
@@ -445,7 +686,34 @@ function RoomMessageListener({ roomName, participantName }) {
                             ? "Processing..."
                             : conversationState === "speaking"
                                 ? "Agent Speaking"
-                                : "Tap to Talk"}
+                                : conversationState === "hold"
+                                    ? "On Hold"
+                                    : "Tap to Talk"}
+                </button>
+                
+                <button
+                    type="button"
+                    onClick={handleHoldResumeToggle}
+                    disabled={connectionState !== ConnectionState.Connected}
+                    style={{
+                        padding: "14px 28px",
+                        borderRadius: "999px",
+                        border: "none",
+                        cursor: connectionState !== ConnectionState.Connected ? "not-allowed" : "pointer",
+                        background: isOnHold
+                            ? "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
+                            : "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                        color: "white",
+                        fontWeight: 700,
+                        fontSize: "16px",
+                        boxShadow: isOnHold
+                            ? "0 4px 20px rgba(34, 197, 94, 0.4)"
+                            : "0 4px 20px rgba(245, 158, 11, 0.4)",
+                        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                        transform: isOnHold ? "scale(1.05)" : "scale(1)"
+                    }}
+                >
+                    {isOnHold ? "▶ Resume" : "⏸ Hold"}
                 </button>
             </div>
 

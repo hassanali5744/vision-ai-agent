@@ -50,6 +50,8 @@ from app.websocket_manager import (
     notify_agent_thinking,
     notify_final_transcript,
     notify_partial_transcript,
+    notify_agent_hold,
+    notify_agent_resume,
 )
 
 # Models tried in order until one succeeds. Using Gemini 2.5 and 1.5 models.
@@ -355,6 +357,7 @@ async def send_response(
     *,
     listen: bool = True,
     phase: str = "conversation",
+    hold_event: asyncio.Event | None = None,
 ) -> None:
     """Send response to the room via data channel and WebSocket events."""
     if not room.local_participant:
@@ -364,6 +367,10 @@ async def send_response(
     import base64
     import uuid
     from app.elevenlabservice import text_to_speech
+
+    # Wait if agent is on hold before starting TTS
+    if hold_event:
+        await hold_event.wait()
 
     # Notify frontend that agent is speaking (transitions state to Speaking)
     await notify_agent_speaking(session_id, response_text)
@@ -398,6 +405,10 @@ async def send_response(
         chunk_size = 15000  # Safe size for WebRTC to prevent silent packet drops
         total_chunks = (len(audio_b64) + chunk_size - 1) // chunk_size
         for i in range(0, len(audio_b64), chunk_size):
+            # Wait if agent is on hold before sending each chunk
+            if hold_event:
+                await hold_event.wait()
+            
             chunk = audio_b64[i:i + chunk_size]
             audio_payload = {
                 "type": "audio_chunk",
@@ -427,6 +438,8 @@ async def entrypoint(ctx: agents.JobContext):
     welcome_sent: set[str] = set()
     processing_lock = asyncio.Lock()
     shutdown_event = asyncio.Event()
+    hold_event = asyncio.Event()  # Event to pause/resume agent processing (set = running, clear = on hold)
+    hold_event.set()  # Initially set to running state
     conversation_history: list[dict[str, str]] = []
     last_processed_transcript: str = ""
     last_process_time: float = 0
@@ -447,6 +460,10 @@ async def entrypoint(ctx: agents.JobContext):
             return
 
         welcome_sent.add(identity)
+        
+        # Respect Hold state - wait if on hold
+        await hold_event.wait()
+        
         await notify_agent_thinking(room.name or "voice-demo")
 
         # Get initial greeting from Gemini based on script instructions
@@ -475,7 +492,7 @@ async def entrypoint(ctx: agents.JobContext):
         except Exception as db_error:
             print(f"[WARN] Failed to save initial greeting to MongoDB: {db_error}")
             
-        await send_response(room, greeting, room.name or "voice-demo", listen=True, phase=phase)
+        await send_response(room, greeting, room.name or "voice-demo", listen=True, phase=phase, hold_event=hold_event)
         print(f"[INFO] Greeting sent to {identity}: {greeting}")
 
     async def process_user_transcript(packet: rtc.DataPacket) -> None:
@@ -534,6 +551,9 @@ async def entrypoint(ctx: agents.JobContext):
                 await notify_agent_thinking(room.name or "voice-demo")
                 await notify_partial_transcript(room.name or "voice-demo", transcript)
 
+                # Wait if agent is on hold before AI generation
+                await hold_event.wait()
+
                 # Get AI reply based on script instructions
                 reply = await get_ai_reply(
                     transcript,
@@ -567,7 +587,7 @@ async def entrypoint(ctx: agents.JobContext):
                     except Exception as db_error:
                         print(f"[WARN] Failed to save livekit reply to MongoDB: {db_error}")
 
-                    await send_response(room, reply, room.name or "voice-demo", listen=listen, phase=phase)
+                    await send_response(room, reply, room.name or "voice-demo", listen=listen, phase=phase, hold_event=hold_event)
                     await notify_final_transcript(room.name or "voice-demo", reply)
                     print("[DEBUG] Response sent successfully")
         except Exception as e:
@@ -581,17 +601,32 @@ async def entrypoint(ctx: agents.JobContext):
         data_len = len(packet.data) if packet.data else 0
         print(f"[DEBUG] Data received from {sender}, bytes={data_len}")
 
-        # Check for playback_finished signal from frontend
+        # Check for control signals from frontend
         try:
             if packet.data:
                 payload = json.loads(packet.data.decode("utf-8"))
+                
                 if payload.get("type") == "playback_finished":
                     print("[DEBUG] Playback finished signal received, transitioning to Idle")
                     task = asyncio.create_task(notify_agent_finished_speaking(room.name or "voice-demo"))
                     _track(task)
                     return
+                
+                if payload.get("type") == "hold":
+                    print("[INFO] Hold signal received, pausing agent")
+                    hold_event.clear()  # Clear event to pause (wait() will block)
+                    task = asyncio.create_task(notify_agent_hold(room.name or "voice-demo"))
+                    _track(task)
+                    return
+                
+                if payload.get("type") == "resume":
+                    print("[INFO] Resume signal received, resuming agent")
+                    hold_event.set()  # Set event to resume (wait() will unblock)
+                    task = asyncio.create_task(notify_agent_resume(room.name or "voice-demo"))
+                    _track(task)
+                    return
         except Exception as exc:
-            print(f"[DEBUG] Failed to parse playback_finished signal: {exc}")
+            print(f"[DEBUG] Failed to parse control signal: {exc}")
 
         task = asyncio.create_task(process_user_transcript(packet))
         _track(task)

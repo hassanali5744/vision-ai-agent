@@ -150,3 +150,13 @@ async def notify_partial_transcript(session_id: str, text: str) -> None:
 async def notify_final_transcript(session_id: str, text: str) -> None:
     await emit_agent_event_or_state(session_id, "final_transcript", {"text": text})
 
+
+async def notify_agent_hold(session_id: str) -> None:
+    """Notify frontend that agent is on hold."""
+    await emit_agent_event_or_state(session_id, "state", {"state": "Hold"})
+
+
+async def notify_agent_resume(session_id: str) -> None:
+    """Notify frontend that agent is resuming from hold."""
+    await emit_agent_event_or_state(session_id, "state", {"state": "Idle"})
+
