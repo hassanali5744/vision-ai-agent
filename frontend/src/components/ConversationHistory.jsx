@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Search, MessageSquare, User, Bot, Clock } from "lucide-react";
 import axios from "axios";
 
 function ConversationHistory() {
@@ -148,143 +149,106 @@ function ConversationHistory() {
     };
 
     return (
-        <div style={{
-            fontFamily: "Inter, system-ui, sans-serif",
-            maxWidth: "900px",
-            margin: "24px auto",
-            padding: "32px",
-            background: "linear-gradient(180deg, rgba(10, 18, 34, 0.98) 0%, rgba(8, 15, 28, 0.98) 100%)",
-            border: "1px solid rgba(148, 163, 184, 0.18)",
-            borderRadius: "24px",
-            boxShadow: "0 32px 80px -20px rgba(2, 8, 23, 0.85), 0 0 40px rgba(96, 165, 250, 0.05)",
-            backdropFilter: "blur(20px)"
-        }}>
-            <h3 style={{ margin: "0 0 8px 0", fontSize: "24px", color: "#f8fafc", fontWeight: 700, letterSpacing: "-0.02em" }}>Conversation History</h3>
-            <p style={{ margin: "0 0 28px 0", fontSize: "15px", color: "#cbd5e1", lineHeight: "1.6" }}>Search by room name or participant name to view conversation history.</p>
+        <div className="max-w-4xl mx-auto">
+            <div className="mb-8">
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                    Conversation History
+                </h2>
+                <p className="text-slate-600 dark:text-slate-400">
+                    Search by room name or participant name to view conversation history
+                </p>
+            </div>
 
-            <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
+            {/* Search Mode Toggle */}
+            <div className="flex gap-2 mb-6">
                 <button
                     onClick={() => setSearchMode("room")}
-                    style={{
-                        padding: "10px 20px",
-                        borderRadius: "999px",
-                        border: searchMode === "room" ? "1px solid #60a5fa" : "1px solid rgba(148, 163, 184, 0.18)",
-                        backgroundColor: searchMode === "room" ? "rgba(59, 130, 246, 0.2)" : "rgba(15, 23, 42, 0.7)",
-                        color: "#f8fafc",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        transition: "all 0.3s ease",
-                        boxShadow: searchMode === "room" ? "0 0 20px rgba(96, 165, 250, 0.2)" : "none"
-                    }}
+                    className={`px-4 py-2 rounded-xl font-medium transition-all ${
+                        searchMode === "room"
+                            ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }`}
                 >
                     Search by Room
                 </button>
                 <button
                     onClick={() => setSearchMode("participant")}
-                    style={{
-                        padding: "10px 20px",
-                        borderRadius: "999px",
-                        border: searchMode === "participant" ? "1px solid #60a5fa" : "1px solid rgba(148, 163, 184, 0.18)",
-                        backgroundColor: searchMode === "participant" ? "rgba(59, 130, 246, 0.2)" : "rgba(15, 23, 42, 0.7)",
-                        color: "#f8fafc",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        transition: "all 0.3s ease",
-                        boxShadow: searchMode === "participant" ? "0 0 20px rgba(96, 165, 250, 0.2)" : "none"
-                    }}
+                    className={`px-4 py-2 rounded-xl font-medium transition-all ${
+                        searchMode === "participant"
+                            ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }`}
                 >
                     Search by Participant
                 </button>
                 <button
                     onClick={loadAllRooms}
-                    style={{
-                        padding: "10px 20px",
-                        borderRadius: "999px",
-                        border: "1px solid rgba(148, 163, 184, 0.18)",
-                        backgroundColor: "rgba(15, 23, 42, 0.7)",
-                        color: "#cbd5e1",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        transition: "all 0.3s ease"
-                    }}
+                    className="px-4 py-2 rounded-xl font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
                 >
                     Load All Rooms
                 </button>
             </div>
 
-            <form onSubmit={handleSearch} style={{ display: "flex", gap: "14px", flexWrap: "wrap", marginBottom: "24px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: "260px", flex: 1 }}>
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0", letterSpacing: "0.02em" }}>
+            {/* Search Form */}
+            <form onSubmit={handleSearch} className="flex gap-4 mb-6">
+                <div className="flex-1">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                         {searchMode === "room" ? "Room name" : "Participant name"}
-                    </span>
-                    <input
-                        value={searchName}
-                        onChange={(e) => setSearchName(e.target.value)}
-                        placeholder={searchMode === "room" ? "Enter room name (e.g., voice-demo)" : "Enter participant name"}
-                        style={{
-                            padding: "12px 16px",
-                            borderRadius: "12px",
-                            border: "1px solid rgba(148, 163, 184, 0.18)",
-                            backgroundColor: "rgba(15, 23, 42, 0.8)",
-                            fontSize: "15px",
-                            outline: "none",
-                            color: "#f8fafc",
-                            transition: "all 0.3s ease"
-                        }}
-                    />
+                    </label>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <input
+                            value={searchName}
+                            onChange={(e) => setSearchName(e.target.value)}
+                            placeholder={searchMode === "room" ? "Enter room name (e.g., voice-demo)" : "Enter participant name"}
+                            className="w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        />
+                    </div>
                 </div>
-                <button
-                    type="submit"
-                    style={{
-                        alignSelf: "flex-end",
-                        padding: "12px 24px",
-                        borderRadius: "12px",
-                        border: "none",
-                        background: "linear-gradient(135deg, #3b82f6, #2563eb)",
-                        color: "#fff",
-                        cursor: "pointer",
-                        fontWeight: 700,
-                        fontSize: "15px",
-                        boxShadow: "0 4px 20px rgba(59, 130, 246, 0.3)",
-                        transition: "all 0.3s ease"
-                    }}
-                >
-                    {searchMode === "room" ? "Load Room" : "Find rooms"}
-                </button>
+                <div className="flex items-end">
+                    <button
+                        type="submit"
+                        className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transform hover:-translate-y-0.5 transition-all duration-200"
+                    >
+                        {searchMode === "room" ? "Load Room" : "Find rooms"}
+                    </button>
+                </div>
             </form>
 
-            {loadingRooms && <p style={{ color: "#cbd5e1", fontSize: "15px" }}>Searching for matching rooms...</p>}
-            {error && <p style={{ color: "#fecaca", backgroundColor: "rgba(127, 29, 29, 0.2)", padding: "14px 18px", borderRadius: "12px", fontSize: "15px", border: "1px solid rgba(248, 113, 113, 0.3)", boxShadow: "0 0 20px rgba(239, 68, 68, 0.15)" }}>{error}</p>}
-
-            {searchedName && !loadingRooms && availableRooms.length === 0 && (
-                <p style={{ color: "#cbd5e1", fontSize: "15px", marginBottom: "20px" }}>No rooms were found for {searchedName}.</p>
+            {loadingRooms && (
+                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                    Searching for matching rooms...
+                </div>
+            )}
+            
+            {error && (
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 mb-6">
+                    {error}
+                </div>
             )}
 
+            {searchedName && !loadingRooms && availableRooms.length === 0 && (
+                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                    No rooms were found for {searchedName}
+                </div>
+            )}
+
+            {/* Available Rooms */}
             {availableRooms.length > 0 && (
-                <div style={{ marginBottom: "24px" }}>
-                    <p style={{ fontSize: "14px", color: "#cbd5e1", marginBottom: "12px", fontWeight: 500 }}>
+                <div className="mb-6">
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-3">
                         {searchMode === "room" ? "Available rooms" : searchedName ? `Rooms found for ${searchedName}` : "All available rooms"}
                     </p>
-                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <div className="flex flex-wrap gap-2">
                         {availableRooms.map((r) => (
                             <button
                                 key={r}
                                 onClick={() => setRoom(r)}
-                                style={{
-                                    padding: "10px 18px",
-                                    borderRadius: "9999px",
-                                    border: room === r ? "1px solid #60a5fa" : "1px solid rgba(148, 163, 184, 0.18)",
-                                    backgroundColor: room === r ? "rgba(59, 130, 246, 0.2)" : "rgba(15, 23, 42, 0.7)",
-                                    color: "#f8fafc",
-                                    cursor: "pointer",
-                                    fontSize: "14px",
-                                    fontWeight: 600,
-                                    transition: "all 0.3s ease",
-                                    boxShadow: room === r ? "0 0 20px rgba(96, 165, 250, 0.2)" : "none"
-                                }}
+                                className={`px-4 py-2 rounded-full font-medium transition-all ${
+                                    room === r
+                                        ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
+                                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                                }`}
                             >
                                 {r}
                             </button>
@@ -293,76 +257,95 @@ function ConversationHistory() {
                 </div>
             )}
 
-            {loading && <p style={{ color: "#cbd5e1", fontSize: "15px" }}>Loading history logs...</p>}
-            {!loading && !room && searchedName && <p style={{ color: "#9ca3af", fontStyle: "italic", textAlign: "center", margin: "48px 0", fontSize: "15px" }}>Choose a room above to view the chat history.</p>}
-            {!loading && !room && !searchedName && <p style={{ color: "#9ca3af", fontStyle: "italic", textAlign: "center", margin: "48px 0", fontSize: "15px" }}>Enter a name to look up the room and conversation history.</p>}
-            {!loading && room && groupedHistory.rooms.length === 0 && <p style={{ color: "#cbd5e1", textAlign: "center", margin: "48px 0", fontSize: "15px" }}>No stream history recorded for this room.</p>}
+            {loading && (
+                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                    Loading history logs...
+                </div>
+            )}
+            
+            {!loading && !room && searchedName && (
+                <div className="text-center py-16 text-slate-400 italic">
+                    Choose a room above to view the chat history
+                </div>
+            )}
+            
+            {!loading && !room && !searchedName && (
+                <div className="text-center py-16 text-slate-400 italic">
+                    Enter a name to look up the room and conversation history
+                </div>
+            )}
+            
+            {!loading && room && groupedHistory.rooms.length === 0 && (
+                <div className="text-center py-16 text-slate-500 dark:text-slate-400">
+                    No stream history recorded for this room
+                </div>
+            )}
 
-            {room && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+            {/* Conversation Cards */}
+            {room && groupedHistory.rooms.length > 0 && (
+                <div className="space-y-6">
                     {groupedHistory.rooms.map((roomData) => {
                         const timeline = buildTimeline(roomData);
 
                         return (
-                            <div key={roomData.room} style={{ display: "flex", flexDirection: "column" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                                    <span style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#94a3b8" }}>Active Room</span>
-                                    <span style={{ fontSize: "14px", fontWeight: 700, color: "#bfdbfe", backgroundColor: "rgba(59, 130, 246, 0.2)", padding: "6px 14px", borderRadius: "9999px", boxShadow: "0 0 20px rgba(96, 165, 250, 0.2)" }}>#{roomData.room}</span>
+                            <div key={roomData.room} className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+                                {/* Room Header */}
+                                <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
+                                    <div className="flex items-center gap-3">
+                                        <MessageSquare className="w-5 h-5 text-blue-500" />
+                                        <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Active Room
+                                        </span>
+                                    </div>
+                                    <span className="px-4 py-2 bg-blue-500/10 text-blue-500 rounded-full text-sm font-semibold">
+                                        #{roomData.room}
+                                    </span>
                                 </div>
 
-                                {timeline.length === 0 && (
-                                    <p style={{ color: "#9ca3af", fontStyle: "italic", fontSize: "15px", padding: "16px 0" }}>Empty room state — no payload items processed.</p>
-                                )}
-
-                                <div style={{ display: "flex", flexDirection: "column", gap: "14px", background: "rgba(15, 23, 42, 0.5)", borderRadius: "16px", padding: "20px", border: "1px solid rgba(148, 163, 184, 0.18)" }}>
-                                    {timeline.map((msg) => {
-                                        const isAgent = msg._type === "agent";
-                                        const bubbleBg = isAgent ? "rgba(34, 197, 94, 0.18)" : "rgba(15, 23, 42, 0.95)";
-                                        const bubbleBorder = isAgent ? "rgba(74, 222, 128, 0.4)" : "rgba(148, 163, 184, 0.25)";
-                                        const titleColor = isAgent ? "#dcfce7" : "#e2e8f0";
-
-                                        return (
-                                            <div
-                                                key={msg._key}
-                                                style={{
-                                                    display: "flex",
-                                                    justifyContent: isAgent ? "flex-start" : "flex-end",
-                                                }}
-                                            >
+                                {timeline.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 italic">
+                                        Empty room state — no payload items processed
+                                    </div>
+                                ) : (
+                                    <div className="p-6 space-y-4">
+                                        {timeline.map((msg) => {
+                                            const isAgent = msg._type === "agent";
+                                            
+                                            return (
                                                 <div
-                                                    style={{
-                                                        borderRadius: "12px",
-                                                        border: `1px solid ${bubbleBorder}`,
-                                                        padding: "14px 16px",
-                                                        backgroundColor: bubbleBg,
-                                                        maxWidth: "85%",
-                                                        boxShadow: isAgent ? "0 0 20px rgba(52, 211, 153, 0.15)" : "0 2px 8px rgba(0,0,0,0.1)",
-                                                        transition: "all 0.3s ease"
-                                                    }}
+                                                    key={msg._key}
+                                                    className={`flex ${isAgent ? "justify-start" : "justify-end"}`}
                                                 >
-                                                    <div style={{
-                                                        fontSize: "11px",
-                                                        marginBottom: "8px",
-                                                        display: "flex",
-                                                        justifyContent: "space-between",
-                                                        alignItems: "center",
-                                                        gap: "16px",
-                                                        color: "#94a3b8"
-                                                    }}>
-                                                        <span style={{ fontWeight: 700, color: titleColor, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.04em" }}>
-                                                            {isAgent ? "🤖 System Agent" : "👤 User Session"}
-                                                        </span>
-                                                        <span>{msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ""}</span>
-                                                    </div>
-
-                                                    <div style={{ fontSize: "15px", color: "#f8fafc", lineHeight: "1.6", wordBreak: "break-word" }}>
-                                                        {msg.text}
+                                                    <div className={`max-w-[85%] rounded-2xl p-4 ${
+                                                        isAgent
+                                                            ? "bg-green-500/10 border border-green-500/20"
+                                                            : "bg-blue-500/10 border border-blue-500/20"
+                                                    }`}>
+                                                        <div className="flex items-center gap-3 mb-2">
+                                                            {isAgent ? (
+                                                                <Bot className="w-4 h-4 text-green-500" />
+                                                            ) : (
+                                                                <User className="w-4 h-4 text-blue-500" />
+                                                            )}
+                                                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                                {isAgent ? "System Agent" : "User Session"}
+                                                            </span>
+                                                            {msg.created_at && (
+                                                                <span className="flex items-center gap-1 text-xs text-slate-400">
+                                                                    <Clock className="w-3 h-3" />
+                                                                    {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-slate-900 dark:text-white leading-relaxed">
+                                                            {msg.text}
+                                                        </p>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

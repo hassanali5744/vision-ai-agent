@@ -155,58 +155,141 @@ function RoomMessageListener({ roomName, participantName }) {
         });
     };
 
-    // Hold music playback - beautiful phone call hold melody
+    // Hold music playback - beautiful mountain bird chirping with fast music
     const playHoldMusic = () => {
         if (holdMusicRef.current) {
             return; // Already playing
         }
 
-        // Create a beautiful hold melody using Web Audio API
+        // Create beautiful mountain-inspired hold music with bird chirping
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const masterGain = audioContext.createGain();
         masterGain.connect(audioContext.destination);
-        masterGain.gain.value = 0.08; // Low volume
+        masterGain.gain.value = 0.07;
         
-        // Create oscillators for a pleasant chord (C major 7th)
-        const frequencies = [261.63, 329.63, 392.00, 493.88]; // C4, E4, G4, B4
-        const oscillators = [];
+        // Fast-paced uplifting melody (mountain-inspired)
+        const melody = [
+            { freq: 523.25, duration: 0.3 },  // C5
+            { freq: 587.33, duration: 0.3 },  // D5
+            { freq: 659.25, duration: 0.3 },  // E5
+            { freq: 783.99, duration: 0.4 },  // G5
+            { freq: 698.46, duration: 0.3 },  // F5
+            { freq: 659.25, duration: 0.3 },  // E5
+            { freq: 587.33, duration: 0.3 },  // D5
+            { freq: 523.25, duration: 0.4 },  // C5
+            { freq: 587.33, duration: 0.3 },  // D5
+            { freq: 659.25, duration: 0.3 },  // E5
+            { freq: 783.99, duration: 0.3 },  // G5
+            { freq: 880.00, duration: 0.5 },  // A5
+            { freq: 783.99, duration: 0.3 },  // G5
+            { freq: 659.25, duration: 0.3 },  // E5
+            { freq: 523.25, duration: 0.6 },  // C5
+        ];
         
-        frequencies.forEach((freq, index) => {
+        // Bird chirping frequencies (high-pitched, quick sounds)
+        const birdChirps = [
+            { freq: 1567.98, duration: 0.08 },  // G6
+            { freq: 1760.00, duration: 0.06 },  // A6
+            { freq: 1975.53, duration: 0.07 },  // B6
+            { freq: 2093.00, duration: 0.05 },  // C7
+            { freq: 2349.32, duration: 0.08 },  // D7
+        ];
+        
+        // Harmonic pad (mountain atmosphere)
+        const padFrequencies = [261.63, 329.63, 392.00]; // C4, E4, G4 (C major)
+        const padOscillators = [];
+        
+        // Create atmospheric pad
+        padFrequencies.forEach((freq) => {
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
             
             osc.type = 'sine';
             osc.frequency.value = freq;
             
-            // Add slight detune for richness
-            osc.detune.value = (index - 1.5) * 5;
-            
-            // Create gentle pulsing effect
-            gain.gain.value = 0.3;
-            const lfo = audioContext.createOscillator();
-            const lfoGain = audioContext.createGain();
-            lfo.frequency.value = 0.5; // 0.5 Hz pulsing
-            lfoGain.gain.value = 0.15;
-            lfo.connect(lfoGain.gain);
-            lfo.start();
+            gain.gain.setValueAtTime(0, audioContext.currentTime);
+            gain.gain.linearRampToValueAtTime(0.12, audioContext.currentTime + 1.5);
             
             osc.connect(gain);
             gain.connect(masterGain);
             osc.start();
             
-            oscillators.push({ osc, gain, lfo, lfoGain });
+            padOscillators.push({ osc, gain });
         });
+        
+        // Play fast melody
+        let noteIndex = 0;
+        const playNextNote = () => {
+            if (!holdMusicRef.current) return;
+            
+            const note = melody[noteIndex];
+            const osc = audioContext.createOscillator();
+            const noteGain = audioContext.createGain();
+            
+            osc.type = 'triangle';
+            osc.frequency.value = note.freq;
+            
+            noteGain.gain.setValueAtTime(0, audioContext.currentTime);
+            noteGain.gain.linearRampToValueAtTime(0.18, audioContext.currentTime + 0.05);
+            noteGain.gain.linearRampToValueAtTime(0.12, audioContext.currentTime + note.duration - 0.05);
+            noteGain.gain.linearRampToValueAtTime(0, audioContext.currentTime + note.duration);
+            
+            osc.connect(noteGain);
+            noteGain.connect(masterGain);
+            osc.start();
+            osc.stop(audioContext.currentTime + note.duration);
+            
+            noteIndex = (noteIndex + 1) % melody.length;
+            
+            if (holdMusicRef.current) {
+                setTimeout(playNextNote, note.duration * 1000);
+            }
+        };
+        
+        // Play bird chirps randomly
+        const playBirdChirp = () => {
+            if (!holdMusicRef.current) return;
+            
+            const chirp = birdChirps[Math.floor(Math.random() * birdChirps.length)];
+            const osc = audioContext.createOscillator();
+            const chirpGain = audioContext.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.value = chirp.freq;
+            
+            // Quick chirp envelope
+            chirpGain.gain.setValueAtTime(0, audioContext.currentTime);
+            chirpGain.gain.linearRampToValueAtTime(0.08, audioContext.currentTime + 0.01);
+            chirpGain.gain.linearRampToValueAtTime(0, audioContext.currentTime + chirp.duration);
+            
+            osc.connect(chirpGain);
+            chirpGain.connect(masterGain);
+            osc.start();
+            osc.stop(audioContext.currentTime + chirp.duration);
+            
+            // Schedule next chirp (random timing between 0.5-2 seconds)
+            if (holdMusicRef.current) {
+                setTimeout(playBirdChirp, 500 + Math.random() * 1500);
+            }
+        };
+        
+        // Start both melody and chirps
+        const melodyTimeout = setTimeout(playNextNote, 300);
+        const chirpTimeout = setTimeout(playBirdChirp, 800);
         
         holdMusicRef.current = {
             audioContext,
             masterGain,
-            oscillators,
+            padOscillators,
+            melodyTimeout,
+            chirpTimeout,
             stop: () => {
                 try {
-                    oscillators.forEach(({ osc, gain, lfo, lfoGain }) => {
-                        lfo.stop();
-                        lfoGain.disconnect();
-                        osc.stop();
+                    clearTimeout(melodyTimeout);
+                    clearTimeout(chirpTimeout);
+                    padOscillators.forEach(({ osc, gain }) => {
+                        gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.8);
+                        osc.stop(audioContext.currentTime + 0.8);
                         gain.disconnect();
                     });
                     masterGain.disconnect();
@@ -217,7 +300,7 @@ function RoomMessageListener({ roomName, participantName }) {
             }
         };
         
-        console.log("[Hold Music] Started playing beautiful hold melody");
+        console.log("[Hold Music] Started playing mountain bird chirping music");
     };
 
     const stopHoldMusic = () => {
@@ -528,6 +611,9 @@ function RoomMessageListener({ roomName, participantName }) {
                 }
 
                 if (data.type === "agent_message" && data.text) {
+                    // Show typing indicator before agent message
+                    setConversationState("speaking");
+                    
                     setMessages((prev) => [
                         ...prev,
                         {
@@ -725,14 +811,24 @@ function RoomMessageListener({ roomName, participantName }) {
             )}
 
             <div className="agent-chat-list">
+                {conversationState === "processing" && (
+                    <div className="agent-chat-item agent typing-message">
+                        <strong>Agent</strong>
+                        <div className="typing-indicator">
+                            <div className="typing-dot"></div>
+                            <div className="typing-dot"></div>
+                            <div className="typing-dot"></div>
+                        </div>
+                    </div>
+                )}
                 {messages.map((msg, idx) => (
-                    <div key={idx} className={`agent-chat-item ${msg.from === "agent" ? "agent" : "user"}`}>
+                    <div key={idx} className={`agent-chat-item ${msg.from === "agent" ? "agent" : "user"} bounce-in`}>
                         <strong>{msg.from === "agent" ? "Agent" : "You"}</strong>
                         <div className="bubble-text">{msg.text}</div>
                         <span className="meta">{msg.timestamp.toLocaleTimeString()}</span>
                     </div>
                 ))}
-                {messages.length === 0 && (
+                {messages.length === 0 && conversationState !== "processing" && (
                     <div className="agent-empty">No messages yet. Hold the microphone button to speak and the conversation will appear here.</div>
                 )}
             </div>
@@ -754,6 +850,8 @@ function LiveKitSession() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [connected, setConnected] = useState(false);
+    const [connectionProgress, setConnectionProgress] = useState(0);
+    const progressIntervalRef = useRef(null);
 
     const handleJoin = async (e) => {
         e.preventDefault();
@@ -765,18 +863,50 @@ function LiveKitSession() {
         sessionStorage.setItem("livekit-participant-name", participantName.trim());
         setLoading(true);
         setError("");
+        setConnectionProgress(0);
+        
+        // Simulate connection progress
+        progressIntervalRef.current = setInterval(() => {
+            setConnectionProgress((prev) => {
+                if (prev >= 90) return prev;
+                return prev + Math.random() * 15;
+            });
+        }, 300);
+
         try {
             const data = await getLiveKitToken(roomName, participantName.trim());
+            setConnectionProgress(100);
             setToken(data.token);
             setServerUrl(
                 data.server_url ||
                     import.meta.env.VITE_LIVEKIT_URL ||
                     "ws://localhost:7880"
             );
+            
+            // Trigger confetti celebration on successful connection
+            if (window.triggerConfetti) {
+                window.triggerConfetti();
+            }
+            
+            // Show success notification
+            if (window.addNotification) {
+                window.addNotification('success', 'Welcome!', `You've joined room "${roomName}" successfully!`);
+            }
+            
             if (data.agent_dispatched === false) {
                 console.log(`Agent "${data.agent_name}" is already active in room "${roomName}".`);
+                // Show agent already present notification
+                if (window.addNotification) {
+                    window.addNotification('agent-join', 'Agent Active', `Agent "${data.agent_name}" is already in the room`);
+                }
             } else {
                 console.log(`Dispatched agent "${data.agent_name}" to room "${roomName}".`);
+                // Show agent join notification
+                if (window.addNotification) {
+                    setTimeout(() => {
+                        window.addNotification('agent-join', 'Agent Joined', `Agent "${data.agent_name}" has joined the conversation`);
+                    }, 1000);
+                }
             }
             setConnected(true);
         } catch (err) {
@@ -786,9 +916,19 @@ function LiveKitSession() {
                     "Failed to fetch LiveKit token. Ensure the backend is running and configured."
             );
         } finally {
+            clearInterval(progressIntervalRef.current);
             setLoading(false);
         }
     };
+
+    // Cleanup interval on unmount
+    useEffect(() => {
+        return () => {
+            if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
+            }
+        };
+    }, []);
 
     const handleDisconnect = () => {
         setToken("");
@@ -825,45 +965,83 @@ function LiveKitSession() {
     }
 
     return (
-        <div className="livekit-setup-card">
-            <h2>Join LiveKit WebRTC Session</h2>
-            <p className="subtitle">Connect to a live room with high-fidelity video & audio capabilities.</p>
-            
-            <form onSubmit={handleJoin} className="setup-form">
-                <div className="form-group">
-                    <label htmlFor="room-name">Room Name</label>
-                    <input
-                        id="room-name"
-                        type="text"
-                        value={roomName}
-                        onChange={(e) => setRoomName(e.target.value)}
-                        placeholder="Enter room name"
-                        disabled={loading}
-                    />
+        <div className="max-w-2xl mx-auto">
+            <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-8">
+                <div className="mb-8">
+                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                        Join LiveKit Session
+                    </h2>
+                    <p className="text-slate-600 dark:text-slate-400">
+                        Connect to a live room with high-fidelity voice capabilities
+                    </p>
                 </div>
+                
+                <form onSubmit={handleJoin} className="space-y-6">
+                    <div>
+                        <label htmlFor="room-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                            Room Name
+                        </label>
+                        <input
+                            id="room-name"
+                            type="text"
+                            value={roomName}
+                            onChange={(e) => setRoomName(e.target.value)}
+                            placeholder="Enter room name"
+                            disabled={loading}
+                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                    </div>
 
-                <div className="form-group">
-                    <label htmlFor="participant-name">Your Name</label>
-                    <input
-                        id="participant-name"
-                        type="text"
-                        value={participantName}
-                        onChange={(e) => setParticipantName(e.target.value)}
-                        placeholder="Enter participant name"
-                        disabled={loading}
-                    />
-                </div>
+                    <div>
+                        <label htmlFor="participant-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                            Your Name
+                        </label>
+                        <input
+                            id="participant-name"
+                            type="text"
+                            value={participantName}
+                            onChange={(e) => setParticipantName(e.target.value)}
+                            placeholder="Enter participant name"
+                            disabled={loading}
+                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                    </div>
 
-                {error && <div className="error-message">{error}</div>}
+                    {error && (
+                        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm">
+                            {error}
+                        </div>
+                    )}
 
-                <button type="submit" className="join-btn" disabled={loading}>
-                    {loading ? "Generating token..." : "Connect Now"}
-                </button>
+                    {loading ? (
+                        <div className="flex flex-col items-center gap-4 py-8">
+                            <div className="w-10 h-10 border-3 border-slate-200 dark:border-slate-700 border-t-blue-500 rounded-full animate-spin"></div>
+                            <div className="text-slate-900 dark:text-white font-medium">Connecting to LiveKit...</div>
+                            <div className="text-slate-500 dark:text-slate-400 text-sm">Establishing secure connection</div>
+                            <div className="w-full max-w-xs h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-300"
+                                    style={{ width: `${Math.min(connectionProgress, 100)}%` }}
+                                ></div>
+                            </div>
+                            <div className="text-blue-500 font-semibold">
+                                {Math.round(Math.min(connectionProgress, 100))}%
+                            </div>
+                        </div>
+                    ) : (
+                        <button 
+                            type="submit" 
+                            className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transform hover:-translate-y-0.5 transition-all duration-200"
+                        >
+                            Join Session
+                        </button>
+                    )}
 
-                <hr />
-
-                <AgentBot />
-            </form>
+                    <div className="pt-6 border-t border-slate-200 dark:border-slate-800">
+                        <AgentBot />
+                    </div>
+                </form>
+            </div>
         </div>
     );
 }
